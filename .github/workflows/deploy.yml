@@ -1,0 +1,74 @@
+name: Deploy
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Log in
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: ghcr.io/${{ github.repository }}
+
+    - name: Build + Push
+      uses: docker/build-push-action@v3
+      with:
+        context: .
+        push: true
+        tags: ghcr.io/${{ github.repository }}:latest
+        build-args: |
+          SERVER_URL=https://${{ github.event.repository.name }}.sandbox.deploid.studio
+    
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Log in
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Pull
+      run: |
+        docker pull ghcr.io/${{ github.repository }}:latest
+    
+    - name: Install Fly
+      uses: superfly/flyctl-actions/setup-flyctl@master
+  
+    - name: Deploy
+      run: flyctl deploy -i ghcr.io/${{ github.repository }}:latest --detach  
+      env:
+        FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+    
+      
